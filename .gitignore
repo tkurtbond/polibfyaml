@@ -1,0 +1,2 @@
+# poc/clang output (.sym, .ll, .o, test executables, valgrind logs): see Makefile
+/build/

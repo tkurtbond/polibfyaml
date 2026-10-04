@@ -1,0 +1,25 @@
+# Valgrind suppressions for poc's conservative garbage collector.
+#
+# GarbageCollectedHeap.Collect scans every word of the machine stack for
+# things that look like heap pointers (poc's rtl/llvm/GarbageCollectedHeap.Mod:
+# each word goes to MarkCandidate), including words that were never
+# written. Memcheck reports each such read as an uninitialised-value error:
+# TestLiveness and TestStreams, which force collections, showed 20 and 24
+# of them, all "Conditional jump or move" with MarkCandidate as the top
+# frame (confirmed live, 2026-10-03). That is how a conservative collector
+# works, not a bug in the binding.
+#
+# Only uninitialised-value errors whose TOP frame is MarkCandidate are
+# suppressed; the same kinds of error anywhere else, and every invalid
+# read/write and leak, are still reported.
+
+{
+   poc-gc-markcandidate-cond
+   Memcheck:Cond
+   fun:GarbageCollectedHeap.MarkCandidate
+}
+{
+   poc-gc-markcandidate-value8
+   Memcheck:Value8
+   fun:GarbageCollectedHeap.MarkCandidate
+}
