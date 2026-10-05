@@ -45,6 +45,8 @@ make test       # every test (from test/), halt test, and example (from examples
 make valgrind   # the test programs, each under valgrind
 make bench      # benchmarks (bench/); not part of `make` or `make test`
 make clean      # rm -rf build
+make install    # the poc library polibfyaml (-OC) into POC_OBERON_LIBRARIES/polibfyaml
+make uninstall  # remove what make install wrote
 ```
 
 What it wraps: poc builds a program from its main module's source,

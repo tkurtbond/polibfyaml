@@ -10,10 +10,12 @@
 # Every program writes the library modules' files into the same $(BUILD),
 # so make must not build two at once.
 #
-# make install copies the library's sources, FyThin.c with them, to the
-# first directory in POC_OBERON_MODULES (a colon-separated list), where
-# other repos' poc makefiles find them; a program importing them still
-# needs libfyaml's flags, as $(LINK) below.
+# make install builds the poc library polibfyaml (FyThin.c's object
+# included) under -OC, the only size model the binding supports, in
+# $(POC_OBERON_LIBRARIES)/polibfyaml (poc puts it in <triple>/OC/ there),
+# where other repos' poc makefiles find it with -library-path. A program
+# using it still needs libfyaml's flags, as $(LINK) below: the library
+# doesn't record them.
 
 POC      ?= poc
 # The size model: decided in PLAN.md; never mix models.
@@ -28,8 +30,13 @@ LINK := $(foreach f,$(FYAML_CFLAGS),-c-flag $(f)) $(foreach f,$(FYAML_LIBS),-lin
 
 BUILD := build
 
-POC_OBERON_MODULES ?= /usr/local/sw/versions/oberon/poc/include
-INSTALLDIR = $(firstword $(subst :, ,$(POC_OBERON_MODULES)))
+# Each library in its own directory under POC_OBERON_LIBRARIES, so a
+# program names only the libraries it uses.
+POC_OBERON_LIBRARIES ?= /usr/local/sw/versions/oberon/poc/lib
+LIBRARY := polibfyaml
+LIBDIR = $(POC_OBERON_LIBRARIES)/$(LIBRARY)
+LIBMODS := FyThin Fyaml FyamlStreams
+TRIPLE = $(shell $(POC) -version | sed -n 's/^target \([^ ]*\).*/\1/p')
 
 LIBSRC := src/FyThin.Mod src/FyThin.c src/Fyaml.Mod src/FyamlStreams.Mod
 # Test programs (test/<name>.Mod, each a main module).
@@ -136,13 +143,19 @@ valgrind: tests
 	done; exit $$status
 
 # Install only a library that compiles: every test program imports it.
+# A library records the poc that built it, and another poc refuses it:
+# install again after upgrading poc.
 install: tests
-	install -d $(INSTALLDIR)
-	install -m 644 $(LIBSRC) $(INSTALLDIR)
+	install -d $(LIBDIR)
+	cd src && $(POC) $(POCFLAGS) -output-dir $(abspath $(LIBDIR)) $(foreach f,$(FYAML_CFLAGS),-c-flag $(f)) \
+	  -library $(LIBRARY) $(LIBMODS:%=%.Mod)
 
-# Remove what make install copied, and only that.
+# Remove what make install wrote, and only that.
 uninstall:
-	rm -f $(addprefix $(INSTALLDIR)/,$(notdir $(LIBSRC)))
+	d=$(LIBDIR)/$(TRIPLE)/OC; \
+	rm -f $$d/lib$(LIBRARY).a $$d/lib$(LIBRARY).so $$d/$(LIBRARY).library $$d/FyThin.c.o \
+	  $(foreach x,$(LIBMODS),$$d/$(x).o $$d/$(x).ll $$d/$(x).sym $$d/$(x).owner); \
+	rmdir $$d 2>/dev/null; true
 
 clean:
 	rm -rf $(BUILD)

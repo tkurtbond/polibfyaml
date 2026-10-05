@@ -57,6 +57,21 @@ poc -OC -import-path polibfyaml/src -output-dir build \
 (On Linux `pkg-config --cflags` is empty and `--libs` is `-lfyaml`, so
 `-link -lfyaml` is enough.)
 
+Or install it once as a poc library and link it compiled: `make install`
+builds the library `polibfyaml` (under `-OC`, with `FyThin.c`'s object
+in it) in `polibfyaml/` under `POC_OBERON_LIBRARIES` (default `/usr/local/sw/versions/oberon/poc/lib`).
+A program then needs no sources and no `-c-flag`, only the library
+path and libfyaml's link flags:
+
+```sh
+poc -OC -library-path /usr/local/sw/versions/oberon/poc/lib/polibfyaml \
+    -link -lfyaml -o MyProgram MyProgram.Mod
+```
+
+A library records the poc that built it, and another poc refuses it:
+run `make install` again after upgrading poc. `make uninstall` removes
+it.
+
 Modules: `Fyaml` is the API; `FyamlStreams` reads several `---`
 separated documents from one input; `FyThin` is the raw libfyaml layer
 underneath, not meant for direct use.
