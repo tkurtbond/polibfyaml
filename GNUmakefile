@@ -143,18 +143,23 @@ valgrind: tests
 	done; exit $$status
 
 # Install only a library that compiles: every test program imports it.
-# A library records the poc that built it, and another poc refuses it:
+# Built in $(BUILD)/lib/, then copied with poc -install-library, which
+# copies only what a program needs: the archive (FyThin.c's object is in
+# it), the shared object, the manifest, and each module's .sym and
+# .owner (not the .o, .ll and FyThin.c.o that -library also writes). A
+# library records the poc that built it, and another poc refuses it:
 # install again after upgrading poc.
 install: tests
-	install -d $(LIBDIR)
-	cd src && $(POC) $(POCFLAGS) -output-dir $(abspath $(LIBDIR)) $(foreach f,$(FYAML_CFLAGS),-c-flag $(f)) \
+	cd src && $(POC) $(POCFLAGS) -output-dir $(abspath $(BUILD))/lib $(foreach f,$(FYAML_CFLAGS),-c-flag $(f)) \
 	  -library $(LIBRARY) $(LIBMODS:%=%.Mod)
+	install -d $(LIBDIR)
+	$(POC) $(POCFLAGS) -library-path $(BUILD)/lib -output-dir $(LIBDIR) -install-library $(LIBRARY)
 
 # Remove what make install wrote, and only that.
 uninstall:
 	d=$(LIBDIR)/$(TRIPLE)/OC; \
-	rm -f $$d/lib$(LIBRARY).a $$d/lib$(LIBRARY).so $$d/$(LIBRARY).library $$d/FyThin.c.o \
-	  $(foreach x,$(LIBMODS),$$d/$(x).o $$d/$(x).ll $$d/$(x).sym $$d/$(x).owner); \
+	rm -f $$d/lib$(LIBRARY).a $$d/lib$(LIBRARY).so $$d/$(LIBRARY).library \
+	  $(foreach x,$(LIBMODS),$$d/$(x).sym $$d/$(x).owner); \
 	rmdir $$d 2>/dev/null; true
 
 clean:
