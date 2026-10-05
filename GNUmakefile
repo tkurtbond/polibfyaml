@@ -9,6 +9,11 @@
 #
 # Every program writes the library modules' files into the same $(BUILD),
 # so make must not build two at once.
+#
+# make install copies the library's sources, FyThin.c with them, to the
+# first directory in POC_OBERON_MODULES (a colon-separated list), where
+# other repos' poc makefiles find them; a program importing them still
+# needs libfyaml's flags, as $(LINK) below.
 
 POC      ?= poc
 # The size model: decided in PLAN.md; never mix models.
@@ -22,6 +27,9 @@ FYAML_LIBS   := $(shell pkg-config --libs libfyaml)
 LINK := $(foreach f,$(FYAML_CFLAGS),-c-flag $(f)) $(foreach f,$(FYAML_LIBS),-link $(f))
 
 BUILD := build
+
+POC_OBERON_MODULES ?= /usr/local/sw/versions/oberon/poc/include
+INSTALLDIR = $(firstword $(subst :, ,$(POC_OBERON_MODULES)))
 
 LIBSRC := src/FyThin.Mod src/FyThin.c src/Fyaml.Mod src/FyamlStreams.Mod
 # Test programs (test/<name>.Mod, each a main module).
@@ -50,7 +58,7 @@ WIDE := $(BUILD)/wide.yaml
 MANYDOCS := $(BUILD)/manydocs.yaml
 RUNS ?= 10
 
-.PHONY: all tests test valgrind bench clean
+.PHONY: all tests test valgrind bench clean install uninstall
 .NOTPARALLEL:
 
 all: tests
@@ -126,6 +134,15 @@ valgrind: tests
 	  grep -E 'ERROR SUMMARY|lost:|reachable:' $(BUILD)/$$t.vg; \
 	  test/vg-reachable.sh $(BUILD)/$$t.vg || { echo "FAIL - $$t: still-reachable memory the collector did not allocate"; status=1; }; \
 	done; exit $$status
+
+# Install only a library that compiles: every test program imports it.
+install: tests
+	install -d $(INSTALLDIR)
+	install -m 644 $(LIBSRC) $(INSTALLDIR)
+
+# Remove what make install copied, and only that.
+uninstall:
+	rm -f $(addprefix $(INSTALLDIR)/,$(notdir $(LIBSRC)))
 
 clean:
 	rm -rf $(BUILD)
