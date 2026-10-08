@@ -371,7 +371,7 @@ END DiagErrors;
    (PLAN.md, "Buffer lifetime"). Parses only the first of several
    "---" documents. *)
 PROCEDURE ParseStringWith*(text: ARRAY OF CHAR; options: SET; VAR err: Error): Document;
-BEGIN RETURN Build(FromChars(text), Length(text), NIL, stringName, FromChars(stringName), options, err)
+BEGIN RETURN Build(FromChars(text), SYSTEM.VAL(SYSTEM.ADDRESS, Length(text)), NIL, stringName, FromChars(stringName), options, err)
 END ParseStringWith;
 
 (* ParseStringWith(text, {}, err): anchors resolved. *)
@@ -529,7 +529,7 @@ PROCEDURE (n: Node) ScalarInto*(VAR s: ARRAY OF CHAR): BOOLEAN;
   VAR p, len, m: SYSTEM.ADDRESS;
 BEGIN
   p := ScalarBytes(n, len);
-  m := len; IF m > LEN(s) - 1 THEN m := LEN(s) - 1 END;
+  m := len; IF m > LEN(s) - 1 THEN m := SYSTEM.VAL(SYSTEM.ADDRESS, LEN(s) - 1) END;
   IF m > 0 THEN SYSTEM.MOVE(p, SYSTEM.ADR(s[0]), m) END;
   s[m] := 0X;
   RETURN m = len
@@ -571,7 +571,7 @@ PROCEDURE (n: Node) Value*(key: ARRAY OF CHAR): Node;
 BEGIN
   ASSERT(n.IsMapping(), AssertKind);
   RETURN NewNode(n.doc,
-    FyThin.NodeMappingLookupValueByString(n.handle, SYSTEM.ADR(key[0]), Length(key)))
+    FyThin.NodeMappingLookupValueByString(n.handle, SYSTEM.ADR(key[0]), SYSTEM.VAL(SYSTEM.ADDRESS, Length(key))))
 END Value;
 
 PROCEDURE (n: Node) HasKey*(key: ARRAY OF CHAR): BOOLEAN;
@@ -582,7 +582,7 @@ END HasKey;
 PROCEDURE (n: Node) ByPath*(path: ARRAY OF CHAR): Node;
 BEGIN
   Live(n);
-  RETURN NewNode(n.doc, FyThin.NodeByPath(n.handle, SYSTEM.ADR(path[0]), Length(path)))
+  RETURN NewNode(n.doc, FyThin.NodeByPath(n.handle, SYSTEM.ADR(path[0]), SYSTEM.VAL(SYSTEM.ADDRESS, Length(path))))
 END ByPath;
 
 (* n's path from the document root, in ByPath syntax; "/" for the root. *)
@@ -679,7 +679,7 @@ END GetText;
 PROCEDURE TextString(VAR t: Text): String;
 BEGIN
   IF t.big # NIL THEN RETURN t.big END;
-  RETURN FromBytes(SYSTEM.ADR(t.buf[0]), t.len)
+  RETURN FromBytes(SYSTEM.ADR(t.buf[0]), SYSTEM.VAL(SYSTEM.ADDRESS, t.len))
 END TextString;
 
 (* A DataError about scalar h of d: 'what: "text"'. *)
@@ -989,14 +989,14 @@ PROCEDURE FieldHandle(m: Node; VAR key: ARRAY OF CHAR; required: BOOLEAN; VAR er
 BEGIN
   err := NIL;
   ASSERT(m.IsMapping(), AssertKind);
-  h := FyThin.NodeMappingLookupValueByString(m.handle, SYSTEM.ADR(key[0]), Length(key));
+  h := FyThin.NodeMappingLookupValueByString(m.handle, SYSTEM.ADR(key[0]), SYSTEM.VAL(SYSTEM.ADDRESS, Length(key)));
   IF h = 0 THEN
     IF required THEN err := Missing(m, key) END;
     RETURN 0
   END;
   IF ~FyThin.NodeIsScalar(h) THEN
     err := NodeError(DataError, NewNode(m.doc, h),
-      FyThin.NodeMappingLookupKeyByString(m.handle, SYSTEM.ADR(key[0]), Length(key)),
+      FyThin.NodeMappingLookupKeyByString(m.handle, SYSTEM.ADR(key[0]), SYSTEM.VAL(SYSTEM.ADDRESS, Length(key))),
       "not a scalar value");
     RETURN 0
   END;
@@ -1227,7 +1227,7 @@ PROCEDURE (d: Document) CreateScalar*(text: ARRAY OF CHAR): Node;
   VAR h: FyThin.Node;
 BEGIN
   ASSERT(d.handle # 0, AssertInvalid);
-  h := FyThin.NodeCreateScalarCopy(d.handle, SYSTEM.ADR(text[0]), Length(text));
+  h := FyThin.NodeCreateScalarCopy(d.handle, SYSTEM.ADR(text[0]), SYSTEM.VAL(SYSTEM.ADDRESS, Length(text)));
   ASSERT(h # 0); AddOrphan(d, h);
   d.created := TRUE;
   RETURN NewNode(d, h)
@@ -1288,8 +1288,8 @@ BEGIN
   ASSERT(n.doc = d, AssertAttach);
   err := NIL;
   len := Length(path);
-  target := FyThin.NodeByPath(FyThin.DocumentRoot(d.handle), SYSTEM.ADR(path[0]), len);
-  rc := FyThin.DocumentInsertAt(d.handle, SYSTEM.ADR(path[0]), len, n.handle);
+  target := FyThin.NodeByPath(FyThin.DocumentRoot(d.handle), SYSTEM.ADR(path[0]), SYSTEM.VAL(SYSTEM.ADDRESS, len));
+  rc := FyThin.DocumentInsertAt(d.handle, SYSTEM.ADR(path[0]), SYSTEM.VAL(SYSTEM.ADDRESS, len), n.handle);
   DropOrphan(d, n.handle);  (* freed by libfyaml *)
   n.handle := 0; n := NIL;
   INC(d.gen);

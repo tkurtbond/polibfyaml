@@ -104,7 +104,7 @@ BEGIN
   s := New(options);
   s.buffer := Copy(text); s.name := Copy(Fyaml.stringName);
   len := LEN(s.buffer^) - 1;
-  ASSERT(FyThin.ParserSetString(s.parser, SYSTEM.ADR(s.buffer[0]), len) = 0);
+  ASSERT(FyThin.ParserSetString(s.parser, SYSTEM.ADR(s.buffer[0]), SYSTEM.VAL(SYSTEM.ADDRESS, len)) = 0);
   RETURN s
 END OpenStringWith;
 
