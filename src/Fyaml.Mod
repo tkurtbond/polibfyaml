@@ -76,6 +76,7 @@ CONST
   AssertKind* = 62;    (* operation not valid for this node's kind *)
   AssertIndex* = 63;   (* index out of range *)
   AssertAttach* = 64;  (* node already attached, or from another document *)
+  AssertStyle* = 65;   (* a style CreateStyledScalar doesn't write *)
 
   stringName* = "(string-in-memory)";  (* file name reported for string input *)
   stdinName* = "<stdin>";               (* file name reported for standard input, as gcc does *)
@@ -83,6 +84,7 @@ CONST
 TYPE
   String* = POINTER TO ARRAY OF CHAR;
   Handles = POINTER TO ARRAY OF SYSTEM.ADDRESS;
+  Strings = POINTER TO ARRAY OF String;
 
   Error* = POINTER TO ErrorDesc;
   ErrorDesc* = RECORD
@@ -103,7 +105,12 @@ TYPE
     (* Nodes made by Create* and not attached yet: libfyaml frees only
        the tree when a document is destroyed, so Close frees these. *)
     orphans: Handles;
-    norphans: LONGINT
+    norphans: LONGINT;
+    (* CreateStyledScalar's nodes, and the YAML each was parsed from,
+       which libfyaml keeps pointing into: kept until Close. *)
+    styled: Handles;
+    sources: Strings;
+    nstyled: LONGINT
   END;
 
   Node* = POINTER TO NodeDesc;
@@ -271,6 +278,7 @@ BEGIN
     END;
     d.orphans := NIL; d.norphans := 0;
     FyThin.DocumentDestroy(h);
+    d.styled := NIL; d.sources := NIL; d.nstyled := 0;
     DEC(openDocuments)
   END;
   d.buffer := NIL
@@ -288,6 +296,7 @@ PROCEDURE NewDoc(h: FyThin.Document; buffer: String): Document;
   VAR d: Document;
 BEGIN
   NEW(d); d.handle := h; d.buffer := buffer; d.gen := 0; d.orphans := NIL; d.norphans := 0;
+  d.styled := NIL; d.sources := NIL; d.nstyled := 0;
   d.name := NIL; d.created := FALSE;
   INC(openDocuments);
   GarbageCollectedHeap.RegisterFinalizer(d, FinalizeDocument);
@@ -621,13 +630,17 @@ END Path;
 (* Where a DataError points: a scalar's 1-based location, or FALSE.
    A scalar made by CreateScalar reports 0:0, which can't be told from
    a parsed one at the very start of the input (confirmed live), so in
-   a document that has had scalars created 0:0 counts as no location. *)
+   a document that has had scalars created 0:0 counts as no location.
+   A CreateStyledScalar's mark is in its own small source, not the
+   document's, so it has none either. *)
 PROCEDURE ScalarLocation(d: Document; h: FyThin.Node; VAR line, column: INTEGER): BOOLEAN;
-  VAR l, c: SYSTEM.INT32;
+  VAR l, c: SYSTEM.INT32; i: LONGINT;
 BEGIN
   IF (h = 0) OR ~FyThin.NodeScalarMark(h, l, c) OR (d.created & (l = 0) & (c = 0)) THEN
     RETURN FALSE
   END;
+  i := 0; WHILE (i < d.nstyled) & (d.styled[i] # h) DO INC(i) END;
+  IF i < d.nstyled THEN RETURN FALSE END;
   line := l + 1; column := c + 1;
   RETURN TRUE
 END ScalarLocation;
@@ -1232,6 +1245,216 @@ BEGIN
   d.created := TRUE;
   RETURN NewNode(d, h)
 END CreateScalar;
+
+(* ---- Styled scalars ----
+
+   CreateScalar leaves the style to libfyaml's emitter, and the
+   installed libfyaml writes such a scalar plain even where plain YAML
+   doesn't hold its text (PLAN.md, "Scalar styles"): "#x" reads back as
+   a comment, " x" as "x", "'x" or "- x" doesn't parse. A styled scalar
+   is parsed instead from YAML text written here, in the style asked
+   for, and the emitter keeps a parsed scalar's style in every mode
+   (confirmed in C and by TestStyles). *)
+
+(* The length of a character at t[i] that a plain, quoted or block
+   scalar can't hold as itself, where YAML 1.1 readers break lines or
+   strip it: NEL (C2 85), LS and PS (E2 80 A8, A9), the BOM (EF BB BF);
+   0 if t[i] starts none. *)
+PROCEDURE Special(VAR t: ARRAY OF CHAR; i, n: LONGINT): LONGINT;
+BEGIN
+  IF (i + 1 < n) & (t[i] = 0C2X) & (t[i + 1] = 85X) THEN RETURN 2
+  ELSIF (i + 2 < n) & (t[i] = 0E2X) & (t[i + 1] = 80X) & ((t[i + 2] = 0A8X) OR (t[i + 2] = 0A9X)) THEN RETURN 3
+  ELSIF (i + 2 < n) & (t[i] = 0EFX) & (t[i + 1] = 0BBX) & (t[i + 2] = 0BFX) THEN RETURN 3
+  ELSE RETURN 0
+  END
+END Special;
+
+(* TRUE if t (n bytes) is well-formed UTF-8: no stray continuation
+   byte, no truncated or overlong sequence, nothing past U+10FFFF, no
+   surrogate. libfyaml refuses anything else, printing a diagnostic. *)
+PROCEDURE ValidUtf8(VAR t: ARRAY OF CHAR; n: LONGINT): BOOLEAN;
+  VAR i, k, j: LONGINT; c, lo, hi: INTEGER;
+BEGIN
+  i := 0;
+  WHILE i < n DO
+    c := ORD(t[i]); lo := 80H; hi := 0BFH;
+    IF c < 80H THEN k := 0
+    ELSIF (c >= 0C2H) & (c <= 0DFH) THEN k := 1
+    ELSIF (c >= 0E0H) & (c <= 0EFH) THEN
+      k := 2; IF c = 0E0H THEN lo := 0A0H ELSIF c = 0EDH THEN hi := 9FH END
+    ELSIF (c >= 0F0H) & (c <= 0F4H) THEN
+      k := 3; IF c = 0F0H THEN lo := 90H ELSIF c = 0F4H THEN hi := 8FH END
+    ELSE RETURN FALSE
+    END;
+    FOR j := 1 TO k DO
+      IF i + j >= n THEN RETURN FALSE END;
+      c := ORD(t[i + j]);
+      IF j = 1 THEN
+        IF (c < lo) OR (c > hi) THEN RETURN FALSE END
+      ELSIF (c < 80H) OR (c > 0BFH) THEN RETURN FALSE
+      END
+    END;
+    INC(i, k + 1)
+  END;
+  RETURN TRUE
+END ValidUtf8;
+
+PROCEDURE IsDigit(c: CHAR): BOOLEAN;
+BEGIN RETURN (c >= "0") & (c <= "9")
+END IsDigit;
+
+PROCEDURE IsAlnum(c: CHAR): BOOLEAN;
+BEGIN RETURN IsDigit(c) OR (c >= "A") & (c <= "Z") OR (c >= "a") & (c <= "z")
+END IsAlnum;
+
+(* TRUE if t (n bytes) is sure to read back as itself written plain, in
+   block and in flow context: deliberately narrower than YAML's rule.
+   It starts with a letter, a digit, a non-ASCII character, or a sign or
+   point and a digit (-5, .5); it is one line with no control
+   character, no leading or trailing blank, no ": ", " #" or trailing
+   ":", none of ",[]{}", and isn't null's spelling (null, Null, NULL;
+   "~" fails the first test). *)
+PROCEDURE PlainSafe(VAR t: ARRAY OF CHAR; n: LONGINT): BOOLEAN;
+  VAR i: LONGINT; c: CHAR;
+BEGIN
+  IF n = 0 THEN RETURN FALSE END;
+  c := t[0];
+  IF ~(IsAlnum(c) OR (c >= 80X) & (Special(t, 0, n) = 0)
+       OR ((c = "-") OR (c = "+") OR (c = ".")) & (n > 1) & IsDigit(t[1])) THEN
+    RETURN FALSE
+  END;
+  IF (t[n - 1] = " ") OR (t[n - 1] = ":") THEN RETURN FALSE END;
+  FOR i := 0 TO n - 1 DO
+    c := t[i];
+    IF (c < " ") OR (c = 7FX) OR (c = ",") OR (c = "[") OR (c = "]") OR (c = "{") OR (c = "}")
+       OR (Special(t, i, n) > 0)
+       OR (c = ":") & (t[i + 1] = " ")    (* t[n - 1] isn't ":", so i + 1 < n *)
+       OR (c = "#") & (t[i - 1] = " ") THEN  (* t[0] isn't "#", so i > 0 *)
+      RETURN FALSE
+    END
+  END;
+  RETURN ~((t = "null") OR (t = "Null") OR (t = "NULL"))
+END PlainSafe;
+
+(* TRUE if t (n bytes) can be a literal block (|): some character other
+   than a line feed, and no control character but line feed and tab. *)
+PROCEDURE LiteralSafe(VAR t: ARRAY OF CHAR; n: LONGINT): BOOLEAN;
+  VAR i: LONGINT; c: CHAR; content: BOOLEAN;
+BEGIN
+  content := FALSE;
+  FOR i := 0 TO n - 1 DO
+    c := t[i];
+    IF (c < " ") & (c # 0AX) & (c # 09X) OR (c = 7FX) OR (Special(t, i, n) > 0) THEN RETURN FALSE END;
+    IF c # 0AX THEN content := TRUE END
+  END;
+  RETURN content
+END LiteralSafe;
+
+PROCEDURE HexDigit(d: INTEGER): CHAR;
+BEGIN IF d < 10 THEN RETURN CHR(ORD("0") + d) ELSE RETURN CHR(ORD("A") + d - 10) END
+END HexDigit;
+
+PROCEDURE AppendChar(VAR s: String; VAR len: LONGINT; c: CHAR);
+  VAR a: ARRAY 2 OF CHAR;
+BEGIN a[0] := c; a[1] := 0X; Append(s, len, a)
+END AppendChar;
+
+(* t (n bytes) as a double-quoted scalar: any text but one with a 0X,
+   which ends t. *)
+PROCEDURE QuotedSource(VAR t: ARRAY OF CHAR; n: LONGINT; VAR s: String; VAR len: LONGINT);
+  VAR i, k: LONGINT; c: CHAR;
+BEGIN
+  AppendChar(s, len, 22X);
+  i := 0;
+  WHILE i < n DO
+    c := t[i]; k := Special(t, i, n);
+    IF k > 0 THEN
+      IF c = 0C2X THEN Append(s, len, "\N")
+      ELSIF c = 0EFX THEN Append(s, len, "\uFEFF")
+      ELSIF t[i + 2] = 0A8X THEN Append(s, len, "\L")
+      ELSE Append(s, len, "\P")
+      END;
+      INC(i, k)
+    ELSE
+      IF c = 22X THEN Append(s, len, '\"')
+      ELSIF c = "\" THEN Append(s, len, "\\")
+      ELSIF c = 0AX THEN Append(s, len, "\n")
+      ELSIF c = 09X THEN Append(s, len, "\t")
+      ELSIF c = 0DX THEN Append(s, len, "\r")
+      ELSIF (c < " ") OR (c = 7FX) THEN
+        Append(s, len, "\x"); AppendChar(s, len, HexDigit(ORD(c) DIV 16)); AppendChar(s, len, HexDigit(ORD(c) MOD 16))
+      ELSE AppendChar(s, len, c)
+      END;
+      INC(i)
+    END
+  END;
+  AppendChar(s, len, 22X)
+END QuotedSource;
+
+(* t (n bytes, LiteralSafe) as a literal block. The indentation is
+   given (|2), so a first line starting with blanks keeps them; the
+   chomping keeps t's trailing line feeds exactly: none (-), one (clip)
+   or more (+). *)
+PROCEDURE LiteralSource(VAR t: ARRAY OF CHAR; n: LONGINT; VAR s: String; VAR len: LONGINT);
+  VAR i, k: LONGINT; lineStart: BOOLEAN;
+BEGIN
+  k := 0; WHILE (k < n) & (t[n - 1 - k] = 0AX) DO INC(k) END;
+  Append(s, len, "|2");
+  IF k = 0 THEN AppendChar(s, len, "-") ELSIF k > 1 THEN AppendChar(s, len, "+") END;
+  AppendChar(s, len, 0AX);
+  lineStart := TRUE;
+  FOR i := 0 TO n - 1 DO
+    IF lineStart & (t[i] # 0AX) THEN Append(s, len, "  ") END;
+    AppendChar(s, len, t[i]);
+    lineStart := t[i] = 0AX
+  END;
+  IF k = 0 THEN AppendChar(s, len, 0AX) END
+END LiteralSource;
+
+(* Records h, made from source, until Close. *)
+PROCEDURE KeepStyled(d: Document; h: FyThin.Node; source: String);
+  VAR a: Handles; b: Strings; i: LONGINT;
+BEGIN
+  IF d.styled = NIL THEN NEW(d.styled, 16); NEW(d.sources, 16)
+  ELSIF d.nstyled = LEN(d.styled^) THEN
+    NEW(a, 2 * d.nstyled); NEW(b, 2 * d.nstyled);
+    FOR i := 0 TO d.nstyled - 1 DO a[i] := d.styled[i]; b[i] := d.sources[i] END;
+    d.styled := a; d.sources := b
+  END;
+  d.styled[d.nstyled] := h; d.sources[d.nstyled] := source; INC(d.nstyled)
+END KeepStyled;
+
+(* A new unattached scalar in d holding text (up to its first 0X),
+   written in style:
+   - StylePlain: plain if PlainSafe says it surely reads back the same,
+     else double-quoted;
+   - StyleDoubleQuoted: double-quoted, escaped as needed;
+   - StyleLiteral: a literal block (|), keeping every line break; else
+     double-quoted, for text with no line but empty ones, or a control
+     character but tab.
+   Any other style halts with AssertStyle. Text that isn't UTF-8, which
+   no YAML style holds, is made by CreateScalar instead. The node has
+   no Location. *)
+PROCEDURE (d: Document) CreateStyledScalar*(text: ARRAY OF CHAR; style: INTEGER): Node;
+  VAR n, len: LONGINT; s: String; h: FyThin.Node;
+BEGIN
+  ASSERT(d.handle # 0, AssertInvalid);
+  ASSERT((style = StylePlain) OR (style = StyleDoubleQuoted) OR (style = StyleLiteral), AssertStyle);
+  n := Length(text); s := NIL; len := 0;
+  IF ~ValidUtf8(text, n) THEN RETURN d.CreateScalar(text) END;
+  IF (style = StylePlain) & PlainSafe(text, n) THEN Append(s, len, text)
+  ELSIF (style = StyleLiteral) & LiteralSafe(text, n) THEN LiteralSource(text, n, s, len)
+  ELSE QuotedSource(text, n, s, len)
+  END;
+  h := FyThin.NodeBuildFromString(d.handle, SYSTEM.ADR(s[0]), SYSTEM.VAL(SYSTEM.ADDRESS, len));
+  IF h = 0 THEN  (* a plain text PlainSafe passed that libfyaml won't parse: none is known *)
+    s := NIL; len := 0; QuotedSource(text, n, s, len);
+    h := FyThin.NodeBuildFromString(d.handle, SYSTEM.ADR(s[0]), SYSTEM.VAL(SYSTEM.ADDRESS, len))
+  END;
+  ASSERT(h # 0);  (* double-quoted well-formed UTF-8 always parses *)
+  AddOrphan(d, h); KeepStyled(d, h, s);
+  RETURN NewNode(d, h)
+END CreateStyledScalar;
 
 PROCEDURE (d: Document) CreateSequence*(): Node;
   VAR h: FyThin.Node;

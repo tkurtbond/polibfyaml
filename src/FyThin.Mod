@@ -424,6 +424,14 @@ PROCEDURE NodeCreateScalarCopy*(fyd: Document; data, size: SYSTEM.ADDRESS): Node
 BEGIN RETURN CNodeCreateScalarCopy(fyd, data, size)
 END NodeCreateScalarCopy;
 
+(* A node parsed from len bytes of YAML at str, unattached, in fyd; 0 if
+   they don't parse. libfyaml keeps pointing into str (confirmed with
+   valgrind, freeing it at once): str must outlive fyd. *)
+PROCEDURE ["C", "fy_node_build_from_string"] CNodeBuildFromString(fyd: Document; str, len: SYSTEM.ADDRESS): Node;
+PROCEDURE NodeBuildFromString*(fyd: Document; str, len: SYSTEM.ADDRESS): Node;
+BEGIN RETURN CNodeBuildFromString(fyd, str, len)
+END NodeBuildFromString;
+
 PROCEDURE ["C", "fy_node_create_sequence"] CNodeCreateSequence(fyd: Document): Node;
 PROCEDURE NodeCreateSequence*(fyd: Document): Node;
 BEGIN RETURN CNodeCreateSequence(fyd)

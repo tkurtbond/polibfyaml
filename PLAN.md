@@ -833,7 +833,59 @@ check gives `EISDIR` for `.`, 0 for an empty file and `/dev/null`, and
 the fopen errno otherwise. Tested in `TestParseErrors` and
 `TestStreams`.
 
+### Scalar styles `[done]`
+
+Added on request (2026-10-09), for po_ova_cg, which saves characters
+through the emitter. **The installed libfyaml writes a `CreateScalar`'s
+text plain even where plain YAML doesn't hold it**, in every emit
+mode. A scratch probe of awkward texts, each in a one-pair mapping,
+emitted in block mode and parsed again:
+
+- read back as something else: `#x` (a comment: null), `!x` (a tag),
+  ` x` and `x ` (the blanks dropped);
+- don't parse at all: `- x`, `-`, `? x`, `|x`, `>x`, `%x`, `@x`,
+  `` `x ``, `'x`, `"x`;
+- right: `x: y`, `[x`, `{x`, `&x`, `*x`, `a #x`, `null`, `~`, the
+  empty text, multi-line text (written double-quoted with `\n`).
+
+Flow mode quoted `#x` but still dropped the blanks. libfyaml's source
+(`fy_emit_scalar_style_from_analysis`) chooses plain from a text
+analysis, which gets these wrong for a created scalar. libfyaml 0.8
+has no public way to set a node's style (`fy_node_get_style` only).
+
+What works (scratch C program, then `TestStyles`): **a scalar parsed
+from YAML text keeps its style through the emitter**, in block,
+default, original and flow modes. So `CreateStyledScalar(text, style)`
+writes the text as YAML itself (double-quoted with escapes, a literal
+block, or plain when `PlainSafe` says it surely reads back the same)
+and parses it with `fy_node_build_from_string` into the document.
+That function keeps pointing into its input (valgrind: reads of the
+freed source when the scalar is used), so the Document keeps each
+source, with its node, until `Close`, as it keeps `ParseString`'s
+buffer. The node's location is in its own source, so it reports none.
+Text that isn't UTF-8 goes to `CreateScalar`: no YAML style holds it,
+and libfyaml prints a diagnostic when asked to parse it.
+
+The literal block always gives its indentation (`|2`), so a first
+line starting with blanks keeps them, and its chomping keeps the
+trailing line feeds exactly (`|2-` none, `|2` one, `|2+` more); the
+emitter writes its own indicator back (`|`, `|2`, `|-`...).
+
+`TestStyles` round-trips 60 texts (the probe's, and escapes, control
+characters, NEL/LS/PS/BOM, and lines for the block) in each of the
+three styles and five emit modes, checks the style chosen for some and
+one document's exact output, and ends with a tripwire that fails once
+libfyaml writes `CreateScalar`'s `#x` right. `HaltStyle` checks
+`AssertStyle` (65). Shown to fail with seven planted bugs (a quote not
+escaped, chomping always clipped, no indentation indicator, `#` or a
+leading blank allowed plain, a styled scalar with a location, `null`
+plain). Not yet in olibfyaml: see the open question below.
+
 ## Open questions
+
+- **CreateStyledScalar in olibfyaml.** The rule is to keep this repo
+  and olibfyaml in step; it was added here first, for po_ova_cg, and
+  needs porting to voc (and asking whether alibfyaml wants it).
 
 - ~~**Module names.**~~ Decided: `FyThin`/`Fyaml`/`FyamlStreams`.
 - ~~**Error-reporting shape.**~~ Decided: an `Error` object handed back

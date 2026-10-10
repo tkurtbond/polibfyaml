@@ -40,11 +40,11 @@ TRIPLE = $(shell $(POC) -version | sed -n 's/^target \([^ ]*\).*/\1/p')
 
 LIBSRC := src/FyThin.Mod src/FyThin.c src/Fyaml.Mod src/FyamlStreams.Mod
 # Test programs (test/<name>.Mod, each a main module).
-TESTS := TestThin TestParseErrors TestQuickstart TestNavigate TestPath TestLiveness TestBuild TestMutate TestScalars TestAnchors TestLocation TestStreams TestStdin TestStdinError TestStdinStream
+TESTS := TestThin TestParseErrors TestQuickstart TestNavigate TestPath TestLiveness TestBuild TestMutate TestScalars TestAnchors TestLocation TestStreams TestStdin TestStdinError TestStdinStream TestStyles
 # Programs that must halt (test/<name>.Mod), as name:Assert-code. poc's
 # ASSERT(x, n) prints "assertion failed (n)" on standard error and exits
 # with status 10, so `make test` requires both.
-HALTTESTS := HaltClosed:61 HaltKind:62 HaltIndex:63 HaltStale:61 HaltAttach:64 HaltAttached:64 HaltTyped:62 HaltResolved:61 HaltStream:61
+HALTTESTS := HaltClosed:61 HaltKind:62 HaltIndex:63 HaltStale:61 HaltAttach:64 HaltAttached:64 HaltTyped:62 HaltResolved:61 HaltStream:61 HaltStyle:65
 ASSERTSTATUS := 10
 
 # Example programs (examples/<name>.Mod), as name:required-exit-status.

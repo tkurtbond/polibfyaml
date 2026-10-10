@@ -230,7 +230,13 @@ default for a missing key, but a present, malformed value is still a
 
 **Building and changing.** `NewDocument`, then `CreateScalar`,
 `CreateSequence`, `CreateMapping`, `Append`, `AppendPair` and
-`SetRoot`. `InsertAt(path, n, err)` merges `n` into the node at `path`
+`SetRoot`. **For text that isn't a simple word or number, use
+`CreateStyledScalar(text, style)`**: the installed libfyaml writes a
+`CreateScalar` plain even when plain YAML can't hold it (`#1 fan` reads
+back as a comment, `'quoted'` doesn't parse, blanks at either end are
+lost; PLAN.md, "Scalar styles"). `style` is `StylePlain` (plain when
+that is surely safe, else double-quoted), `StyleDoubleQuoted`, or
+`StyleLiteral` (a `|` block, for multi-line text). `InsertAt(path, n, err)` merges `n` into the node at `path`
 (mapping into mapping, sequence into sequence, or replacing a scalar)
 and always consumes `n`, setting it to NIL. Nodes created but never
 attached are freed by `Close`.

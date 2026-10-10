@@ -78,7 +78,7 @@ Each test is its own main module in `test/` (`TestThin`,
 `TestParseErrors`, `TestQuickstart`, `TestNavigate`, `TestPath`,
 `TestLiveness`, `TestBuild`, `TestMutate`, `TestScalars`,
 `TestAnchors`, `TestLocation`, `TestStreams`, `TestStdin`,
-`TestStdinError`, `TestStdinStream`), printing `ok   - <label>` / `FAIL - <label>` per check through the
+`TestStdinError`, `TestStdinStream`, `TestStyles`), printing `ok   - <label>` / `FAIL - <label>` per check through the
 shared `test/Check.Mod`, and ending with `All checks passed.` or
 `<N> check(s) failed.` A failing run exits 1, so `make test` fails. To
 judge a run, grep for `FAIL` or read the last line. **Adding a test
@@ -97,7 +97,7 @@ program with its own `.stdin` file. To run one by hand, from `test/`:
 code, and a program can't catch its own halt. So each such case is a
 separate small main module, `test/Halt*.Mod` (`HaltClosed`,
 `HaltKind`, `HaltIndex`, `HaltStale`, `HaltAttach`, `HaltAttached`,
-`HaltTyped`, `HaltResolved`, `HaltStream`), listed in the Makefile's
+`HaltTyped`, `HaltResolved`, `HaltStream`, `HaltStyle`), listed in the Makefile's
 `HALTTESTS` as `name:code`. **poc's `ASSERT(x, n)` does not exit with
 `n`**: it prints `assertion failed (n)` on standard error and exits with
 status 10 (voc exits with `n`), so `make test` requires status 10 and
