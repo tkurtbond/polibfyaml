@@ -838,7 +838,7 @@ the fopen errno otherwise. Tested in `TestParseErrors` and
 
 ### Scalar styles `[done]`
 
-Added on request (2026-10-09), for po_ova_cg, which saves characters
+Added on request (2026-10-09), for ova_cg_po, which saves characters
 through the emitter. **The installed libfyaml writes a `CreateScalar`'s
 text plain even where plain YAML doesn't hold it**, in every emit
 mode. A scratch probe of awkward texts, each in a one-pair mapping,
@@ -887,7 +887,7 @@ plain). Not yet in olibfyaml: see the open question below.
 ## Open questions
 
 - **CreateStyledScalar in olibfyaml.** The rule is to keep this repo
-  and olibfyaml in step; it was added here first, for po_ova_cg, and
+  and olibfyaml in step; it was added here first, for ova_cg_po, and
   needs porting to voc (and asking whether alibfyaml wants it).
 
 - ~~**Module names.**~~ Decided: `FyThin`/`Fyaml`/`FyamlStreams`.
