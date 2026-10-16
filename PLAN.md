@@ -912,6 +912,29 @@ plain). Not yet in olibfyaml: see the open question below.
   (LONGINT), and every `size_t` needs HUGEINT or SYSTEM.ADDRESS.
   Consequence: code using the binding must be compiled with `-OC`
   too, because models can't be mixed; say so in the README.
+- ~~**poc 0.6.0's unsigned types**~~ (`SYSTEM.CARD`, `CARD8` to
+  `CARD64`). Decided 2026-10-15: not used. Every place the binding
+  crosses into C was checked:
+  - `size_t`: `SYSTEM.CARD` would match it, but the lengths come from
+    signed `LONGINT`s (`Length`, `LEN`, `t.len`), and the CARD types
+    convert to and from signed ones only by `SYSTEM.VAL`. So each
+    `SYSTEM.VAL(SYSTEM.ADDRESS, len)` would just become
+    `SYSTEM.VAL(SYSTEM.CARD, len)`. `LEN` and `SIZE` stay signed, so
+    comparisons would need more conversions, not fewer. The extra
+    range buys nothing, since no scalar comes near `MAX(LONGINT)`.
+  - Emitter flags: only `FYECF_TAG_DIR` reaches bit 31, and `FyThin`
+    doesn't expose it. `FlagSortKeys` and the `FlagMode*` values sit
+    at bit 23 or below, and enums and truth values are C `int`, so
+    `SYSTEM.INT32` is right.
+  - voc has no CARD types (and poc's `-strict` rejects them), so
+    using them in `Fyaml` or `FyamlStreams` would split this repo
+    from olibfyaml. Inside the poc-only `FyThin` they would only
+    relabel types.
+
+  The one real use would be new API: a `CARD64` accessor (say
+  `Card64Value`/`Card64Field`) for YAML integers from 2^63 to
+  2^64 - 1, which `LongIntValue` rejects with a `DataError`. olibfyaml
+  couldn't follow it, so add it only when a program needs such values.
 - ~~**`Node` as heap object versus record.**~~ Decided in Phase 6: it
   stays a heap object. A `Node` per navigation step costs about 56 ns;
   allocation did dominate the typed accessors, which was fixed inside
