@@ -45,23 +45,27 @@ make test       # every test (from test/), halt test, and example (from examples
 make valgrind   # the test programs, each under valgrind
 make bench      # benchmarks (bench/); not part of `make` or `make test`
 make clean      # rm -rf build
-make install    # the poc library polibfyaml (-OC) into POC_OBERON_LIBRARIES/polibfyaml
+make install    # the poc library polibfyaml (-OC, with and without -g) into POCLIBDIR
 make uninstall  # remove what make install wrote
 ```
 
-What it wraps: poc builds a program from its main module's source,
-finding the modules it imports on the import path (`-import-path src`,
-plus `test` or `bench`), and compiles every one of them again on each
-build, so there is no import order to keep and no per-module rule: a
-new library module needs only adding to `LIBSRC` (for the dependency),
-a new test only its name in `TESTS`. **`src/FyThin.c`, beside
-`FyThin.Mod`, is compiled with clang and linked as FyThin's part in C**
-whenever FyThin is compiled. `pkg-config --cflags libfyaml` reaches
-that compile through `-c-flag`, and `--libs` the link through `-link`.
+What it wraps: the library `polibfyaml` is built in `build/lib/`, and
+the tests and examples take it from there (`-library-path build/lib`,
+plus `-import-path test` for `Check`), so they test what `make install`
+would install. The makefile unexports `POC_LIBRARY_PATH`, so an
+installed copy is never tested in place of this checkout. Benchmarks
+are compiled from source (`-import-path src -import-path bench`). There
+is no import order to keep and no per-module rule: a new library module
+needs adding to `LIBSRC` (for the dependency) and `LIBMODS`, a new test
+only its name in `TESTS`. **`src/FyThin.c`, beside `FyThin.Mod`, is
+compiled with clang as FyThin's part in C** whenever FyThin is
+compiled. `pkg-config --cflags libfyaml` reaches that compile through
+`-c-flag`, and `--libs` the link through `-link`, which the library
+records, so a program using it passes no flags for libfyaml.
 Output (`.sym`, `.ll`, `.o`, `FyThin.c.o`, the programs) goes into
-`build/` (`-output-dir`). Each program rewrites the library modules'
-files there, so the Makefile is `.NOTPARALLEL`. Add `-verbose` to a poc
-command to see the clang commands it runs.
+`build/` (`-output-dir`). Each program rewrites the files of the
+modules it compiles there, so the Makefile is `.NOTPARALLEL`. Add
+`-verbose` to a poc command to see the clang commands it runs.
 
 Integer size model: **build every module with `-OC`**, as olibfyaml
 does (PLAN.md, "Integer model"): `SHORTINT`/`INTEGER`/`LONGINT` are

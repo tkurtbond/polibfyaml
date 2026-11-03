@@ -1,25 +1,28 @@
 # polibfyaml -- Oberon-2 binding to libfyaml for poc, the Peaseblossom
 # Oberon Compiler.  See AGENTS.md.
 #
-# poc builds a program from its main module's source, finding the modules
-# it imports on the import path (src/, plus test/ or bench/), and compiles
-# every one of them again on each build; src/FyThin.c, beside FyThin.Mod,
-# is compiled and linked with them as FyThin's part in C. What it writes -
-# each module's .sym, .ll and .o, and the programs - goes into $(BUILD).
+# The library polibfyaml is built in $(LIBDIR), with src/FyThin.c, beside
+# FyThin.Mod, compiled as FyThin's part in C, and with libfyaml's link flags
+# recorded in it. The tests and examples take the library from there, so
+# they test this checkout and what make install would install, and pass no
+# flags for libfyaml, as a program using the library needs none. The
+# benchmarks are compiled from src/.
 #
-# Every program writes the library modules' files into the same $(BUILD),
-# so make must not build two at once.
+# poc writes each module's .sym, .ll and .o, and the programs, into $(BUILD).
+# Every program writes the files of the modules it compiles into the same
+# $(BUILD), so make must not build two at once.
 #
-# make install builds the poc library polibfyaml (FyThin.c's object
-# included) under -OC, the only size model the binding supports, in
-# $(POC_OBERON_LIBRARIES)/polibfyaml (poc puts it in <triple>/OC/ there),
-# where other repos' poc makefiles find it with -library-path. A program
-# using it still needs libfyaml's flags, as $(LINK) below: the library
-# doesn't record them.
+# make install installs the library in $(POCLIBDIR), ~/.local/lib/poc by
+# default, with and without debug information, under -OC, the only size
+# model the binding supports. poc puts each in <triple>/<variant>/ there.
 
 POC      ?= poc
+PREFIX ?= $(HOME)/.local
+POCLIBDIR ?= $(PREFIX)/lib/poc
 # The size model: decided in PLAN.md; never mix models.
 POCFLAGS := -OC
+MODELS := OC
+VARIANTS := $(MODELS) $(addsuffix -g,$(MODELS))
 VALGRIND ?= valgrind --leak-check=full --show-leak-kinds=all --error-exitcode=99 --suppressions=poc-gc.supp --suppressions=libfyaml.supp
 
 # libfyaml's header and library: clang compiles FyThin.c with the -I flags,
@@ -28,15 +31,23 @@ FYAML_CFLAGS := $(shell pkg-config --cflags libfyaml)
 FYAML_LIBS   := $(shell pkg-config --libs libfyaml)
 LINK := $(foreach f,$(FYAML_CFLAGS),-c-flag $(f)) $(foreach f,$(FYAML_LIBS),-link $(f))
 
-BUILD := build
+# An installed library on POC_LIBRARY_PATH would be taken in place of this
+# checkout's source, or would stop the build if another poc wrote it.
+unexport POC_LIBRARY_PATH
 
-# Each library in its own directory under POC_OBERON_LIBRARIES, so a
-# program names only the libraries it uses.
-POC_OBERON_LIBRARIES ?= /usr/local/sw/versions/oberon/poc/lib
+BUILD := build
+LIBDIR := $(BUILD)/lib
+
 LIBRARY := polibfyaml
-LIBDIR = $(POC_OBERON_LIBRARIES)/$(LIBRARY)
 LIBMODS := FyThin Fyaml FyamlStreams
-TRIPLE = $(shell $(POC) -version | sed -n 's/^target \([^ ]*\).*/\1/p')
+
+# $(call variant-flags,<variant>) gives poc's flags for a variant: OC-g gives
+# -OC -g.
+variant-flags = -$(firstword $(subst -, ,$(1))) $(if $(filter %-g,$(1)),-g)
+
+# A library records the poc that built it, and another poc refuses it, so
+# each library depends on poc itself.
+POCBIN := $(shell command -v $(POC))
 
 LIBSRC := src/FyThin.Mod src/FyThin.c src/Fyaml.Mod src/FyamlStreams.Mod
 # Test programs (test/<name>.Mod, each a main module).
@@ -75,14 +86,20 @@ tests: $(TESTBINS) $(HALTBINS) $(EXAMPLEBINS)
 $(BUILD):
 	mkdir -p $@
 
-$(BUILD)/Test%: test/Test%.Mod test/Check.Mod $(LIBSRC) | $(BUILD)
-	$(POC) $(POCFLAGS) -import-path src -import-path test -output-dir $(BUILD) $(LINK) -o $@ $<
+$(LIBDIR)/$(LIBRARY)-%.stamp: $(LIBSRC) $(POCBIN) | $(BUILD)
+	mkdir -p $(LIBDIR)
+	cd src && $(POC) $(call variant-flags,$*) -output-dir $(abspath $(LIBDIR)) $(LINK) \
+	  -library $(LIBRARY) $(LIBMODS:%=%.Mod)
+	touch $@
 
-$(BUILD)/Halt%: test/Halt%.Mod $(LIBSRC) | $(BUILD)
-	$(POC) $(POCFLAGS) -import-path src -output-dir $(BUILD) $(LINK) -o $@ $<
+$(BUILD)/Test%: test/Test%.Mod test/Check.Mod $(LIBDIR)/$(LIBRARY)-OC.stamp | $(BUILD)
+	$(POC) $(POCFLAGS) -library-path $(LIBDIR) -import-path test -output-dir $(BUILD) -o $@ $<
 
-$(BUILD)/Example%: examples/Example%.Mod $(LIBSRC) | $(BUILD)
-	$(POC) $(POCFLAGS) -import-path src -output-dir $(BUILD) $(LINK) -o $@ $<
+$(BUILD)/Halt%: test/Halt%.Mod $(LIBDIR)/$(LIBRARY)-OC.stamp | $(BUILD)
+	$(POC) $(POCFLAGS) -library-path $(LIBDIR) -output-dir $(BUILD) -o $@ $<
+
+$(BUILD)/Example%: examples/Example%.Mod $(LIBDIR)/$(LIBRARY)-OC.stamp | $(BUILD)
+	$(POC) $(POCFLAGS) -library-path $(LIBDIR) -output-dir $(BUILD) -o $@ $<
 
 $(BUILD)/Bench%: bench/Bench%.Mod bench/Timing.Mod $(LIBSRC) | $(BUILD)
 	$(POC) $(POCFLAGS) -import-path src -import-path bench -output-dir $(BUILD) $(LINK) -o $@ $<
@@ -142,25 +159,41 @@ valgrind: tests
 	  test/vg-reachable.sh $(BUILD)/$$t.vg || { echo "FAIL - $$t: still-reachable memory the collector did not allocate"; status=1; }; \
 	done; exit $$status
 
-# Install only a library that compiles: every test program imports it.
-# Built in $(BUILD)/lib/, then copied with poc -install-library, which
-# copies only what a program needs: the archive (FyThin.c's object is in
-# it), the shared object, the manifest, and each module's .sym and
-# .owner (not the .o, .ll and FyThin.c.o that -library also writes). A
-# library records the poc that built it, and another poc refuses it:
-# install again after upgrading poc.
-install: tests
-	cd src && $(POC) $(POCFLAGS) -output-dir $(abspath $(BUILD))/lib $(foreach f,$(FYAML_CFLAGS),-c-flag $(f)) \
-	  -library $(LIBRARY) $(LIBMODS:%=%.Mod)
-	install -d $(LIBDIR)
-	$(POC) $(POCFLAGS) -library-path $(BUILD)/lib -output-dir $(LIBDIR) -install-library $(LIBRARY)
+# install copies the library, in each variant, into $(POCLIBDIR) with poc
+# -install-library, which copies only what a program needs: the archive
+# (FyThin.c's object is in it), the shared object, the manifest, and each
+# module's .sym and .owner (not the .o, .ll and FyThin.c.o that -library also
+# writes). A program then finds it with -library-path $(POCLIBDIR). A library
+# records the poc that built it, and another poc refuses it: install again
+# after upgrading poc.
+define newline
 
-# Remove what make install wrote, and only that.
+
+endef
+
+install: $(foreach v,$(VARIANTS),$(LIBDIR)/$(LIBRARY)-$(v).stamp)
+	$(foreach v,$(VARIANTS),$(POC) $(call variant-flags,$(v)) \
+	  -library-path $(LIBDIR) -install-library $(LIBRARY) -output-dir $(POCLIBDIR)$(newline))
+
+# uninstall removes from $(POCLIBDIR)/<triple>/<variant> what install put
+# there. It leaves other libraries' files alone, and removes a directory only
+# when nothing is left in it. The triple is poc's target.
+INSTALLED_FILES := $(LIBRARY).library lib$(LIBRARY).a lib$(LIBRARY).so lib$(LIBRARY).so.0.0 \
+  $(foreach m,$(LIBMODS),$(m).sym $(m).owner)
+
 uninstall:
-	d=$(LIBDIR)/$(TRIPLE)/OC; \
-	rm -f $$d/lib$(LIBRARY).a $$d/lib$(LIBRARY).so $$d/$(LIBRARY).library \
-	  $(foreach x,$(LIBMODS),$$d/$(x).sym $$d/$(x).owner); \
-	rmdir $$d 2>/dev/null; true
+	@triple=$$($(POC) -version | sed -n 's/^target \([^ ]*\).*/\1/p'); \
+	if [ -z "$$triple" ]; then echo "uninstall: cannot get the target from $(POC) -version" >&2; exit 1; fi; \
+	for v in $(VARIANTS); do \
+	  dir=$(POCLIBDIR)/$$triple/$$v; \
+	  if [ -d "$$dir" ]; then \
+	    echo "cd $$dir && rm -f $(INSTALLED_FILES)"; \
+	    (cd "$$dir" && rm -f $(INSTALLED_FILES)) || exit 1; \
+	    rmdir "$$dir" 2>/dev/null || :; \
+	  fi; \
+	done; \
+	rmdir $(POCLIBDIR)/$$triple 2>/dev/null || :; \
+	rmdir $(POCLIBDIR) 2>/dev/null || :
 
 clean:
 	rm -rf $(BUILD)
