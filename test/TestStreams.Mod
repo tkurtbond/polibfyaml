@@ -4,7 +4,8 @@ MODULE TestStreams; (* FyamlStreams: several documents from one input *)
    a GC host adds: a stream finalized by the GC, documents that
    outlive a closed and collected stream (string and file), the
    read-ahead document freed by Close (checked under make valgrind),
-   the Next-only loop, NoResolve, and exact error text. *)
+   the Next-only loop, NoResolve, exact error text, and an alias that
+   can't be resolved (POLIBFYAML-BUGS.md / OLIBFYAML-BUGS.md, bug 1). *)
 
 IMPORT GarbageCollectedHeap, Fyaml, FyamlStreams, Check;
 
@@ -179,6 +180,29 @@ BEGIN
   s := FyamlStreams.OpenStringWith(text, {Fyaml.NoResolve}, err);
   d := s.Next(err); root := d.Root(); root := root.Value("b");
   Check.Check(root.IsAlias(), "with NoResolve it leaves them");
+  d.Close; s.Close;
+
+  (* An alias that can't be resolved is an error, not the end *)
+  Lines("---|name: ok|---|- *nope|---|name: third|", text);
+  s := FyamlStreams.OpenString(text, err);
+  d := s.Next(err);
+  Check.Check(NameIs(d, "ok"), "bad alias: the first document is fine");
+  d.Close;
+  Check.Check(~s.HasNext(err) & (err # NIL) & (err.kind = Fyaml.ParseError), "an undefined alias: HasNext FALSE + ParseError");
+  Check.Check(HasPrefix(err.msg, "(string-in-memory):4:4: error: invalid alias"), "  located, with libfyaml's message");
+  Check.Check(~s.HasNext(err) & (err = NIL), "  ...then the end, not the same error again");
+  s.Close;
+  Lines("- &a [*a]|", text);
+  s := FyamlStreams.OpenString(text, err);
+  d := s.Next(err);
+  Check.Check((d = NIL) & (err # NIL) & (err.kind = Fyaml.ParseError)
+              & HasPrefix(err.msg, "(string-in-memory):1:8: error: cyclic reference detected"),
+              "a cyclic reference: Next is NIL + ParseError");
+  s.Close;
+  Lines("- *nope|", text);
+  s := FyamlStreams.OpenStringWith(text, {Fyaml.NoResolve}, err);
+  d := s.Next(err);
+  Check.Check((d # NIL) & (err = NIL), "with NoResolve an undefined alias is no error");
   d.Close; s.Close;
 
   (* Lifetimes *)

@@ -48,6 +48,7 @@ PROCEDURE ["C", "FyThin.-document-build-from-stdin"] CDocumentBuildFromStdin(res
 PROCEDURE ["C", "FyThin.-parser-create"] CParserCreate(resolve: SYSTEM.INT32; diag: Diag): Parser;
 PROCEDURE ["C", "FyThin.-parser-set-input-stdin"] CParserSetInputStdin(fyp: Parser; name: SYSTEM.ADDRESS): SYSTEM.INT32;
 PROCEDURE ["C", "FyThin.-diag-got-error"] CDiagGotError(diag: Diag): SYSTEM.INT32;
+PROCEDURE ["C", "FyThin.-parser-get-stream-error"] CParserGetStreamError(fyp: Parser): SYSTEM.INT32;
 PROCEDURE ["C", "FyThin.-diag-set-collect-errors"] CDiagSetCollectErrors(diag: Diag; collect: SYSTEM.INT32);
 PROCEDURE ["C", "FyThin.-node-is-scalar"] CNodeIsScalar(fyn: Node): SYSTEM.INT32;
 PROCEDURE ["C", "FyThin.-node-is-sequence"] CNodeIsSequence(fyn: Node): SYSTEM.INT32;
@@ -142,10 +143,12 @@ PROCEDURE ParserSetInputStdin*(fyp: Parser; name: SYSTEM.ADDRESS): SYSTEM.INT32;
 BEGIN RETURN CParserSetInputStdin(fyp, name)
 END ParserSetInputStdin;
 
-(* The next document, or 0 at the end or on an error: DiagGotError
-   tells them apart. After an error every later call returns 0 too;
-   libfyaml can't resync to the documents after a malformed one
-   (confirmed live; alibfyaml found even fy_parser_reset doesn't). *)
+(* The next document, or 0 at the end or on an error:
+   ParserGetStreamError tells them apart (DiagGotError alone misses a
+   resolve failure: LIBFYAML-ISSUES.md, issue 2). After an error
+   every later call returns 0 too; libfyaml can't resync to the
+   documents after a malformed one (confirmed live; alibfyaml found
+   even fy_parser_reset doesn't). *)
 PROCEDURE ["C", "fy_parse_load_document"] CParseLoadDocument(fyp: Parser): Document;
 PROCEDURE ParseLoadDocument*(fyp: Parser): Document;
 BEGIN RETURN CParseLoadDocument(fyp)
@@ -155,6 +158,13 @@ PROCEDURE ["C", "fy_parser_destroy"] CParserDestroy(fyp: Parser);
 PROCEDURE ParserDestroy*(fyp: Parser);
 BEGIN CParserDestroy(fyp)
 END ParserDestroy;
+
+(* TRUE once loading a document failed, a syntax error or a resolve
+   failure (an undefined alias, a cyclic reference); FALSE at a clean
+   end. Sticky (confirmed live). *)
+PROCEDURE ParserGetStreamError*(fyp: Parser): BOOLEAN;
+BEGIN RETURN CParserGetStreamError(fyp) # 0
+END ParserGetStreamError;
 
 (* TRUE once an error was reported to diag; sticky. *)
 PROCEDURE DiagGotError*(diag: Diag): BOOLEAN;

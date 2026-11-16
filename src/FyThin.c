@@ -97,6 +97,12 @@ int32_t diag_got_error(address diag)
 	return fy_diag_got_error((struct fy_diag *)diag) ? 1 : 0;
 }
 
+int32_t parser_get_stream_error(address fyp) NAME("parser-get-stream-error");
+int32_t parser_get_stream_error(address fyp)
+{
+	return fy_parser_get_stream_error((struct fy_parser *)fyp) ? 1 : 0;
+}
+
 void diag_set_collect_errors(address diag, int32_t collect) NAME("diag-set-collect-errors");
 void diag_set_collect_errors(address diag, int32_t collect)
 {

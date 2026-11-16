@@ -36,7 +36,15 @@ it does collect the error and `fy_parser_get_stream_error` returns true.
 No test reads such a document through a stream: `TestAnchors` checks a
 cycle only through `ParseFile` and `Resolve`.
 
-**Status.** Open. A likely fix: in `Fetch`, also treat
-`fy_parser_get_stream_error` or a non-empty collected error list as an
-error, and add the undefined-alias and cyclic cases to `TestStreams`.
-Keep polibfyaml and olibfyaml in step.
+**Fix.** `Fetch` also checks `fy_parser_get_stream_error`
+(`FyThin.ParserGetStreamError`), which libfyaml sets for a syntax error
+and a resolve failure alike and not at a clean end, so a resolve
+failure is a `ParseError` with libfyaml's located message. The same
+fix is in polibfyaml and olibfyaml (PLAN.md, "A resolve failure in a
+stream").
+
+**Verified** 2026-11-15. `TestStreams` checks an undefined alias after a
+good document (`HasNext` FALSE and `(string-in-memory):4:4: error:
+invalid alias`, then the end), a cycle through `Next`, and an undefined
+alias with `NoResolve` (no error). `make test` and `make valgrind` pass
+in both repos; with the old check, the undefined-alias check failed.

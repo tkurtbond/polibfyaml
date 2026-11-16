@@ -884,6 +884,29 @@ escaped, chomping always clipped, no indentation indicator, `#` or a
 leading blank allowed plain, a styled scalar with a location, `null`
 plain). Not yet in olibfyaml: see the open question below.
 
+### A resolve failure in a stream `[done]`
+
+Found 2026-11-15 through pobesm2_fmt2 (POLIBFYAML-BUGS.md, bug 1): with resolving
+on, a stream reaching a document with an undefined alias or a cyclic
+reference returned NIL from `Next` with `err` NIL, as at a clean end,
+so a program read the file as empty. `Fetch` told an error from the
+end by `fy_diag_got_error`, which libfyaml doesn't set for a resolve
+failure, although it collects the error (LIBFYAML-ISSUES.md, issue
+2). `ParseFile` was never affected: `fy_document_build_from_*` does
+set it.
+
+`fy_parser_get_stream_error` is set in both cases, and confirmed live
+with a scratch C program over several documents: false after each good
+document and at a clean end (including an empty input), true from a
+syntax error or a resolve failure on, and sticky. `Fetch` now checks
+it as well as `fy_diag_got_error` (`FyThin.ParserGetStreamError`), so
+both are a `ParseError` with libfyaml's located message, e.g.
+`(string-in-memory):4:4: error: invalid alias` (the column of the name
+after `*`). Tested in `TestStreams`: an undefined alias after a good
+document (`HasNext`, then the end), a cycle (`Next`), and an
+undefined alias with `NoResolve`, which is no error. Control: with the
+old check, the undefined-alias check failed.
+
 ## Open questions
 
 - **CreateStyledScalar in olibfyaml.** The rule is to keep this repo

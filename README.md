@@ -263,8 +263,10 @@ IF s # NIL THEN
 END
 ```
 
-`Next` alone also works: NIL with `err = NIL` is the end. After a parse
-error the stream is finished (libfyaml can't resync). Documents stay
+`Next` alone also works: NIL with `err = NIL` is the end. A document
+that can't be parsed, or whose aliases can't be resolved (an undefined
+alias, a cyclic reference), is a `ParseError`, and after one the stream
+is finished (libfyaml can't resync). Documents stay
 usable after their stream is closed.
 
 ## Oberon-2 notes

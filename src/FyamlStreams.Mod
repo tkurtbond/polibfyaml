@@ -152,7 +152,10 @@ END OpenStdin;
 
 (* Loads the next document into s.pending (0 at the end or on an
    error, with err set for an error). Nothing is loaded once finished:
-   libfyaml has nothing more to give after an error. *)
+   libfyaml has nothing more to give after an error. A resolve
+   failure (an undefined alias, a cyclic reference) doesn't set
+   DiagGotError, only ParserGetStreamError (LIBFYAML-ISSUES.md,
+   issue 2), so both are checked. *)
 PROCEDURE Fetch(s: Stream; VAR err: Fyaml.Error);
 BEGIN
   err := NIL;
@@ -162,7 +165,7 @@ BEGIN
   s.pending := FyThin.ParseLoadDocument(s.parser);
   IF s.pending = 0 THEN
     s.finished := TRUE;
-    IF FyThin.DiagGotError(s.diag) THEN
+    IF FyThin.DiagGotError(s.diag) OR FyThin.ParserGetStreamError(s.parser) THEN
       err := Fyaml.DiagErrors(s.diag, s.buffer # NIL, s.name)
     END
   END
