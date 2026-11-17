@@ -882,7 +882,26 @@ libfyaml writes `CreateScalar`'s `#x` right. `HaltStyle` checks
 `AssertStyle` (65). Shown to fail with seven planted bugs (a quote not
 escaped, chomping always clipped, no indentation indicator, `#` or a
 leading blank allowed plain, a styled scalar with a location, `null`
-plain). Not yet in olibfyaml: see the open question below.
+plain). Ported to olibfyaml 2026-11-17 (its `1dcaebb`).
+
+The port found two lifetime checks missing, and both repos now have
+them. With the source not kept (`d.sources[i] := NIL`), or with
+libfyaml handed the caller's copy of `text` (a value parameter),
+**libfyaml's emitter doesn't give wrong text:
+`fy_emit_document_to_string` allocates without bound** (confirmed
+live in olibfyaml, with gdb in `do_buffer_output` and 8 GB in about
+two minutes), and whether the freed source has been reused yet
+depends on when the GC ran. So `TestStyles` reads each node's text
+back before emitting and emits only if all match; under poc the
+value-parameter control then gives 5 `FAIL`s and a trap. And
+`TestLiveness` makes a styled scalar from a value parameter,
+collects, overwrites small freed blocks (`SmallChurn`) and checks its
+text, which fails with the source not kept, under poc and voc.
+`SmallChurn` is needed because poc's allocator keeps a free list per
+small block size (`GarbageCollectedHeap`, FREE LISTS), so the
+1000-byte blocks of `Churn` never reuse the small source: with
+`Churn` alone, this control passed. Run such controls under a memory
+cap (`systemd-run --user --scope -p MemoryMax=1G`).
 
 ### A resolve failure in a stream `[done]`
 
@@ -909,9 +928,8 @@ old check, the undefined-alias check failed.
 
 ## Open questions
 
-- **CreateStyledScalar in olibfyaml.** The rule is to keep this repo
-  and olibfyaml in step; it was added here first, for ova_cg_po, and
-  needs porting to voc (and asking whether alibfyaml wants it).
+- ~~**CreateStyledScalar in olibfyaml.**~~ Ported 2026-11-17 (olibfyaml
+  `1dcaebb`). Still to ask: whether alibfyaml wants it.
 
 - ~~**Module names.**~~ Decided: `FyThin`/`Fyaml`/`FyamlStreams`.
 - ~~**Error-reporting shape.**~~ Decided: an `Error` object handed back

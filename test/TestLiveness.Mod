@@ -19,6 +19,20 @@ BEGIN
   GarbageCollectedHeap.Collect
 END Churn;
 
+(* Collects, then fills small blocks of many sizes with junk, so
+   small freed memory is reused and overwritten: poc's allocator keeps a free list for each small block size,
+   and Churn's
+   1000-byte blocks never reuse a small one. *)
+PROCEDURE SmallChurn;
+  VAR i, k: INTEGER; j: Junk;
+BEGIN
+  GarbageCollectedHeap.Collect;
+  FOR i := 1 TO 2000 DO
+    NEW(j, 8 + i MOD 200);
+    FOR k := 0 TO SHORT(LEN(j^)) - 1 DO j[k] := "x" END
+  END
+END SmallChurn;
+
 (* text is a value parameter here, so poc copies it into this frame's
    memory -- exactly the spike's failure case, if ParseString
    did not copy it into a buffer of its own. *)
@@ -26,6 +40,12 @@ PROCEDURE ParseValueParam(text: ARRAY OF CHAR): Fyaml.Document;
   VAR err: Fyaml.Error;
 BEGIN RETURN Fyaml.ParseString(text, err)
 END ParseValueParam;
+
+(* A styled scalar made from a value parameter, as above; the YAML
+   CreateStyledScalar writes for it is referenced only by d. *)
+PROCEDURE StyledValueParam(d: Fyaml.Document; text: ARRAY OF CHAR): Fyaml.Node;
+BEGIN RETURN d.CreateStyledScalar(text, Fyaml.StyleDoubleQuoted)
+END StyledValueParam;
 
 (* Returns only a node: its Document is then referenced only by it. *)
 PROCEDURE OnlyANode(): Fyaml.Node;
@@ -59,6 +79,14 @@ BEGIN
   Churn;
   n := d.Root(); n := n.ByPath("/a/b");
   Check.Check(n.ScalarIs("hello"), "document parsed from a dead value-parameter frame reads correctly");
+  d.Close;
+
+  (* CreateStyledScalar's source, which libfyaml points into, lives
+     as long as the Document *)
+  d := Fyaml.NewDocument();
+  n := StyledValueParam(d, "#styled, from a dead frame");
+  Churn; SmallChurn;
+  Check.Check(n.ScalarIs("#styled, from a dead frame"), "a styled scalar reads correctly after GCs");
   d.Close;
 
   (* A reachable Node keeps its Document (and its buffer) alive *)

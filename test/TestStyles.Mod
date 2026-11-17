@@ -72,19 +72,30 @@ END Texts;
 
 (* Emits a document holding every text, as items of a sequence nested
    in a mapping in a sequence, in style, with flags; parses it back and
-   checks each text. Reports each one that differs. *)
+   checks each text. Reports each one that differs. Each node's text is
+   checked before emitting too: a node pointing into freed or dead
+   memory (the buffer-lifetime bug, AGENTS.md) sends libfyaml's emitter
+   into a runaway allocation rather than a wrong answer (confirmed with
+   both planted), so such a node fails here without being emitted. *)
 PROCEDURE RoundTrip(style, flags: INTEGER; label: ARRAY OF CHAR);
   VAR d, d2: Fyaml.Document; root, m, seq, k, v, r2: Fyaml.Node; err: Fyaml.Error; s, got: Fyaml.String;
-    i: INTEGER; ok, all: BOOLEAN;
+    i: INTEGER; ok, held, all: BOOLEAN;
 BEGIN
-  d := Fyaml.NewDocument();
+  d := Fyaml.NewDocument(); held := TRUE;
   root := d.CreateSequence(); d.SetRoot(root);
   m := d.CreateMapping(); root.Append(m);
   seq := d.CreateSequence();
-  FOR i := 0 TO nTexts - 1 DO v := d.CreateStyledScalar(texts[i], style); seq.Append(v) END;
+  FOR i := 0 TO nTexts - 1 DO
+    v := d.CreateStyledScalar(texts[i], style); got := v.Scalar();
+    IF got^ # texts[i] THEN
+      held := FALSE; Out.String("    text "); Out.Int(i, 0); Out.String(" made as: ["); Out.String(got^);
+      Out.String("]"); Out.Ln
+    END;
+    seq.Append(v)
+  END;
   k := d.CreateScalar("texts"); ok := m.AppendPair(k, seq, err);
-  s := d.ToYAML(flags, err);
-  all := ok & (s # NIL);
+  s := NIL; IF held & ok THEN s := d.ToYAML(flags, err) END;
+  all := held & ok & (s # NIL);
   IF all THEN
     d2 := Fyaml.ParseString(s^, err);
     all := d2 # NIL;
