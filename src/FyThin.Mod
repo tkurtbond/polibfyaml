@@ -8,10 +8,11 @@ MODULE FyThin; (* Thin libfyaml binding: direct calls, no ownership or error pol
 
    Two kinds of declaration. A libfyaml or libc function that takes and
    returns only pointers, sizes and ints is declared here as an external
-   ["C"] procedure, and wrapped in an exported Oberon procedure: poc 0.1.0
-   does not keep an external procedure's linkage name in the .sym file, so
-   an importer would call it by its Oberon name and fail to link
-   (AGENTS.md, "poc 0.1.0 problems"). What an Oberon declaration cannot
+   ["C"] procedure, and wrapped in an exported Oberon procedure. poc 0.1.0
+   forced the wrapper, since it did not keep an external procedure's
+   linkage name in the .sym file; poc 0.2.0 does, and the wrappers stay
+   by choice, so the interface is Oberon procedures throughout (AGENTS.md,
+   "poc 0.1.0 problems"). What an Oberon declaration cannot
    say is in FyThin.c beside this file, which poc compiles with clang
    against the installed <libfyaml.h> and links with the program:
    libfyaml's static inline helpers (fy_node_is_mapping and friends),

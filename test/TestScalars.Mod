@@ -12,7 +12,7 @@ MODULE TestScalars; (* Typed scalar accessors and the mapping-field forms *)
    literal is a REAL, and strtod's result matches poc's D literals
    bit for bit (confirmed live). *)
 
-IMPORT Strings, Fyaml, Check;
+IMPORT Fyaml, Check;
 
 VAR err: Fyaml.Error;
 
@@ -172,13 +172,7 @@ PROCEDURE Edges;
   VAR d: Fyaml.Document; m, n: Fyaml.Node; i: INTEGER; l: LONGINT; x: LONGREAL; ok: BOOLEAN;
     text: ARRAY 1024 OF CHAR;
 BEGIN
-  (* In pieces: a poc string literal holds at most 255 characters. *)
-  text := "{lmin: -9223372036854775808, lmax: 9223372036854775807, lover: 9223372036854775808, lunder: -9223372036854775809, ";
-  Strings.Append("hmax: 0x7FFFFFFFFFFFFFFF, hmin: -0x8000000000000000, hover: 0x8000000000000000, imax: 2147483647, imin: -2147483648, iover: 2147483648, iunder: -2147483649, ", text);
-  Strings.Append("lead: .5, trail: 5., exp: 1.5E-2, bare: ., noexp: 1e, hex: 0x1A, inf: .inf, sep: 1_000.0, spaced: ' 42 ', prefix: 0x, plus: +7, ", text);
-  Strings.Append("lbin: 0b0111111111111111111111111111111111111111111111111111111111111111, ", text);
-  Strings.Append("lfloat: 1_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000.5, ", text);
-  Strings.Append("lbad: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx}", text);
+  text := "{lmin: -9223372036854775808, lmax: 9223372036854775807, lover: 9223372036854775808, lunder: -9223372036854775809, hmax: 0x7FFFFFFFFFFFFFFF, hmin: -0x8000000000000000, hover: 0x8000000000000000, imax: 2147483647, imin: -2147483648, iover: 2147483648, iunder: -2147483649, lead: .5, trail: 5., exp: 1.5E-2, bare: ., noexp: 1e, hex: 0x1A, inf: .inf, sep: 1_000.0, spaced: ' 42 ', prefix: 0x, plus: +7, lbin: 0b0111111111111111111111111111111111111111111111111111111111111111, lfloat: 1_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000.5, lbad: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx}";
   d := Fyaml.ParseString(text, err);
   m := d.Root();
   Check.Check(m.LongIntField("lmin", l, err) & (l = MIN(LONGINT)), "MIN(LONGINT) parses");

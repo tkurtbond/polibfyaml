@@ -19,7 +19,7 @@ mistakes halt the program with a failed `ASSERT` naming a distinct code.
 
 ## Requirements
 
-- poc 0.1.0 or later, with its runtime library (`poc-rtl`), on `PATH`;
+- poc 0.2.0 or later, with its runtime library (`poc-rtl`), on `PATH`;
   override with `make POC=/path/to/poc`.
 - clang, which poc runs.
 - libfyaml with its header, found through `pkg-config libfyaml`.

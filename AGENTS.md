@@ -216,7 +216,7 @@ Everything else is olibfyaml's code, unchanged.
     sizes and ints is an external procedure,
     `PROCEDURE ["C", "fy_document_root"] CDocumentRoot(fyd: Document): Node;`,
     wrapped in an exported Oberon procedure (see "poc 0.1.0 problems"
-    for why the wrapper).
+    for why the wrapper, and why it stays).
   - Everything else is in `src/FyThin.c`, compiled against the installed
     header: libfyaml's static inline helpers (`fy_node_is_mapping` and
     friends, `fy_node_is_alias`), `struct fy_parse_cfg` (built there),
@@ -239,9 +239,6 @@ Everything else is olibfyaml's code, unchanged.
   `BenchWide.Len`).
 - **Halt tests** check status 10 and the code in the message (Test,
   above).
-- **`TestScalars`** builds one long document from pieces with
-  `Strings.Append`: a poc string literal holds at most 255 characters
-  (voc's 1024).
 - **Valgrind**: `poc-gc.supp` in place of `voc-gc.supp`, and the
   still-reachable check by allocator (Valgrind, above).
 - Comments that described voc's behavior now describe poc's.
@@ -249,22 +246,20 @@ Everything else is olibfyaml's code, unchanged.
 ## poc 0.1.0 problems
 
 Found while porting (2026-10-03, poc 0.1.0 from the RPM, and the same
-at Peaseblossom's HEAD then), worked around here; remove a workaround
-once a released poc fixes its problem:
+at Peaseblossom's HEAD then). All three were fixed in poc 0.2.0
+(Peaseblossom `526d7ba`), and this binding needs 0.2.0 or later:
 
-- **An exported external procedure can't be called from another
-  module.** `FyThin.sym` keeps `PROCEDURE ["C", "fy_document_destroy"]
-  DocumentDestroy*(...)` as plain `PROCEDURE^ DocumentDestroy*(...)`,
-  so an importer calls `@FyThin.DocumentDestroy`, which nothing
-  defines, and clang fails: "use of undefined value
-  '@FyThin.DocumentDestroy'". Hence every external procedure here is
-  unexported and wrapped.
-- **`poc -check` uses the wrong word size**: under `-OC` on x86-64 it
-  rejects `a := l` (`a: SYSTEM.ADDRESS; l: LONGINT`), "assignment is
-  not type-compatible: LONGINT to SYSTEM.ADDRESS", which a real build
-  (`-emit-llvm-ir`, or building a program) accepts. Build, don't
-  `-check`.
-- A string literal holds at most 255 characters (voc: 1024).
+- **An exported external procedure couldn't be called from another
+  module**: the `.sym` file lost its linkage name. That is why every
+  external procedure here is unexported and wrapped in an exported
+  Oberon procedure. The wrappers stay by choice, as polibtls's and
+  posockets' do: `FyThin`'s interface stays Oberon procedures
+  throughout.
+- **`poc -check` used the wrong word size** (it judged every module at
+  32 bits). `-check` is now fine to use.
+- **A string literal held at most 255 characters**. `TestScalars` built
+  its long document from pieces with `Strings.Append` until
+  2026-11-20; it is now one literal.
 
 ## poc / Oberon-2 facts this binding depends on (confirmed)
 
